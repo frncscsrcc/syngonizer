@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
-	"log"
+	"strings"
 )
 
 // Config ...
@@ -25,8 +25,9 @@ type GlobalConfig struct {
 
 // FolderConfig ...
 type FolderConfig struct {
-	Root string   `json:"root"`
-	Apps []string `json:"apps"`
+	LocalRoot  string   `json:"local-root"`
+	RemoteRoot string   `json:"remote-root"`
+	Apps       []string `json:"apps"`
 }
 
 // LoadConfig ...
@@ -38,11 +39,33 @@ func LoadConfig(configPath string) (Config, error) {
 	}
 	err = json.Unmarshal([]byte(file), &config)
 	if err != nil {
-		log.Fatal(err)
+		return config, err
 	}
 
+	// ----------------
+	// Validations
+	// ----------------
 	if config.Global.NameSpace == "production" && config.Global.AllowProduction != true {
-		log.Fatal(errors.New("can not be used in production namespace"))
+		return config, errors.New("can not be used in production namespace")
 	}
+	for _, folderConfig := range config.Folders {
+		// local-root is required
+		if folderConfig.LocalRoot == "" {
+			return config, errors.New("missing local-root in config")
+		}
+		// local-root must be an absolute path
+		if strings.HasPrefix(folderConfig.LocalRoot, "/") == false {
+			return config, errors.New("local-root must be an absolute path")
+		}
+		// remote-root, if present, must be an absolute path
+		if folderConfig.RemoteRoot != "" && strings.HasPrefix(folderConfig.RemoteRoot, "/") == false {
+			return config, errors.New("remote-root must be an absolute path")
+		}
+		// app selector is required
+		if len(folderConfig.Apps) == 0 {
+			return config, errors.New("missing apps selector")
+		}
+	}
+
 	return config, nil
 }

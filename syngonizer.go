@@ -12,7 +12,8 @@ import (
 // WatchFolder ...
 type WatchFolder struct {
 	watcher         *watcher.Watcher
-	rootFolder      string
+	localRoot       string
+	remoteRoot      string
 	apps            []string
 	existingFolders map[string]bool
 	refreshRate     int
@@ -75,12 +76,13 @@ loop:
 
 func addWatchFolder(globalConfig GlobalConfig, folderConfig FolderConfig, ki *KubeInfo) (*WatchFolder, error) {
 	wf := new(WatchFolder)
-	root := folderConfig.Root
+	root := folderConfig.LocalRoot
 	if isAFolder(root) == false {
 		return wf, errors.New(root + " is not a folder")
 	}
 
-	wf.rootFolder = root
+	wf.localRoot = root
+	wf.remoteRoot = folderConfig.RemoteRoot
 	wf.refreshRate = globalConfig.RefreshRate
 	wf.apps = folderConfig.Apps
 	wf.kubeInfo = ki
@@ -103,7 +105,7 @@ func addWatchFolder(globalConfig GlobalConfig, folderConfig FolderConfig, ki *Ku
 }
 
 func (wf *WatchFolder) String() string {
-	return wf.rootFolder
+	return wf.localRoot
 }
 
 // Watch ..

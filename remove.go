@@ -5,15 +5,18 @@ import (
 )
 
 func (wf *WatchFolder) remove(path string) {
-	relativePath := strings.Replace(path, wf.rootFolder, "", 1)
+	remotePath := strings.Replace(path, wf.localRoot, "", 1)
+	if wf.remoteRoot != "" {
+		remotePath = wf.remoteRoot + remotePath
+	}
 
 	if isAFolder(path) {
-		wf.removeFolder(relativePath)
+		wf.removeFolder(remotePath)
 		delete(wf.existingFolders, path)
 		return
 	}
 
-	wf.removeFile(relativePath)
+	wf.removeFile(remotePath)
 	return
 }
 

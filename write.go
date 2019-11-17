@@ -5,15 +5,18 @@ import (
 )
 
 func (wf *WatchFolder) write(path string) {
-	relativePath := strings.Replace(path, wf.rootFolder, "", 1)
+	remotePath := strings.Replace(path, wf.localRoot, "", 1)
+	if wf.remoteRoot != "" {
+		remotePath = wf.remoteRoot + remotePath
+	}
 
 	if isAFolder(path) {
-		wf.writeFolder(relativePath)
+		wf.writeFolder(remotePath)
 		wf.existingFolders[path] = true
 		return
 	}
 
-	wf.writeFile(path, relativePath)
+	wf.writeFile(path, remotePath)
 	return
 }
 
