@@ -1,6 +1,8 @@
 SynGoNizer
 ===
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/frncscsrcc/syngonizer)](https://goreportcard.com/report/github.com/frncscsrcc/syngonizer)
+
 Watch and sync files from your local env to one or more running containers on
 a Kubernetes infrastructure.
 
