@@ -1,0 +1,20 @@
+{
+  "global": {
+    "refresh-rate": 500,
+    "namespace": "default",
+    "kubectl-path": "/snap/bin/microk8s.kubectl",
+    "refresh-pod-list": 60,
+    "allow-production": false,
+    "die-if-error": true
+  },
+  "folders": [
+    {
+      "root" : "/home/francesco/go/",
+      "apps" : ["microbot"]
+    },
+    {
+      "root" : "/home/francesco/Dev/",
+      "apps" : ["microbot"]
+    }
+  ]
+}
