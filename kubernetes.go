@@ -112,7 +112,7 @@ func (ki *KubeInfo) CreateFolder(app string, path string) {
 	pods := ki.appToPods[app]
 	for _, podName := range pods {
 		globalFeed.newLog("Creating folder" + path + " in pod " + podName)
-		backgroundExecCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "touch", path)
+		backgroundExecCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "mkdir", path)
 	}
 }
 

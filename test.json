@@ -5,7 +5,7 @@
     "kubectl-path": "/snap/bin/microk8s.kubectl",
     "refresh-pod-list": 60,
     "allow-production": false,
-    "die-if-error": true
+    "die-if-error": false
   },
   "folders": [
     {
