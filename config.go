@@ -15,12 +15,12 @@ type Config struct {
 
 // GlobalConfig ...
 type GlobalConfig struct {
-	RefreshRate     float64 `json:"refresh-rate"`
-	NameSpace       string  `json:"namespace"`
-	KubectlPath     string  `json:"kubectl-path"`
-	RefreshPodList  int     `json:"refresh-pod-list"`
-	AllowProduction bool    `json:"allow-production"`
-	DieIfError      bool    `json:"die-if-error"`
+	EventListenInterval   float64 `json:"event-listen-iterval"`
+	NameSpace             string  `json:"namespace"`
+	KubectlPath           string  `json:"kubectl-path"`
+	UpdatePodListInterval int     `json:"update-pod-list-interval"`
+	AllowProduction       bool    `json:"allow-production"`
+	DieIfError            bool    `json:"die-if-error"`
 }
 
 // FolderConfig ...
@@ -48,6 +48,9 @@ func LoadConfig(configPath string) (Config, error) {
 	if config.Global.NameSpace == "production" && config.Global.AllowProduction != true {
 		return config, errors.New("can not be used in production namespace")
 	}
+	if config.Global.UpdatePodListInterval > 0 && config.Global.UpdatePodListInterval < 5 {
+		return config, errors.New("update-pod-list-interval min value is 5")
+	}
 	for _, folderConfig := range config.Folders {
 		// local-root is required
 		if folderConfig.LocalRoot == "" {
@@ -56,6 +59,10 @@ func LoadConfig(configPath string) (Config, error) {
 		// local-root must be an absolute path
 		if strings.HasPrefix(folderConfig.LocalRoot, "/") == false {
 			return config, errors.New("local-root must be an absolute path")
+		}
+		// local-root must exists and be a folder
+		if !isAFolder(folderConfig.LocalRoot) {
+			return config, errors.New("local-root " + folderConfig.LocalRoot + " is not a folder")
 		}
 		// remote-root, if present, must be an absolute path
 		if folderConfig.RemoteRoot != "" && strings.HasPrefix(folderConfig.RemoteRoot, "/") == false {

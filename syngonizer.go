@@ -10,13 +10,13 @@ import (
 
 // WatchFolder ...
 type WatchFolder struct {
-	watcher         *watcher.Watcher
-	localRoot       string
-	remoteRoot      string
-	apps            []string
-	existingFolders map[string]bool
-	refreshRate     float64
-	kubeInfo        *KubeInfo
+	watcher             *watcher.Watcher
+	localRoot           string
+	remoteRoot          string
+	apps                []string
+	existingFolders     map[string]bool
+	eventListenInterval float64
+	kubeInfo            *KubeInfo
 }
 
 // Watch ...
@@ -31,11 +31,11 @@ func Watch(config Config) error {
 	log.Printf("Fetched app to pod list for namespace %s\n", config.Global.NameSpace)
 
 	// Request a refresh on pod list based on time interval
-	refreshPodList := 60
-	if config.Global.RefreshPodList > 0 {
-		refreshPodList = config.Global.RefreshPodList
+	updatePodListInterval := _updatePodListInterval
+	if config.Global.UpdatePodListInterval > 0 {
+		updatePodListInterval = config.Global.UpdatePodListInterval
 	}
-	ki.UpdatePodListBackground(refreshPodList)
+	ki.UpdatePodListBackground(updatePodListInterval)
 
 	watchers := make([]*WatchFolder, 0)
 	for _, folderConfig := range config.Folders {
@@ -82,7 +82,7 @@ func addWatchFolder(globalConfig GlobalConfig, folderConfig FolderConfig, ki *Ku
 
 	wf.localRoot = root
 	wf.remoteRoot = folderConfig.RemoteRoot
-	wf.refreshRate = globalConfig.RefreshRate
+	wf.eventListenInterval = globalConfig.EventListenInterval
 	wf.apps = folderConfig.Apps
 	wf.kubeInfo = ki
 
@@ -133,15 +133,15 @@ func (wf *WatchFolder) listen() {
 		}
 	}()
 	// Set refresh rate
-	refreshRate := _refreshRate
-	if wf.refreshRate > 0 {
-		refreshRate = wf.refreshRate
+	eventListenInterval := _eventListenInterval
+	if wf.eventListenInterval > 0 {
+		eventListenInterval = wf.eventListenInterval
 	}
 	// Sec to ms
-	refreshRate = 1000 * refreshRate
+	eventListenInterval = 1000 * eventListenInterval
 
 	// Start listening events
-	if err := wf.watcher.Start(time.Millisecond * time.Duration(refreshRate)); err != nil {
+	if err := wf.watcher.Start(time.Millisecond * time.Duration(eventListenInterval)); err != nil {
 		globalFeed.newError(err)
 	}
 }

@@ -3,7 +3,7 @@ package syngonizer
 import (
 	"encoding/json"
 	"log"
-	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -43,6 +43,9 @@ type KubeInfo struct {
 	appToPods   map[string][]string
 	namespace   string
 	kubectlPath string
+	// in order to avoid to create the remote folder all the time we update a file
+	// format: {"POD123/folder/ABC" => true, "POD456/folder/ABC" => true, ...}
+	folderCreatedOnPod map[string]bool
 }
 
 // NewKubeInfo ...
@@ -51,6 +54,8 @@ func NewKubeInfo(namespace string, kubectlPath string) *KubeInfo {
 	ki.appToPods = make(map[string][]string)
 	ki.namespace = namespace
 	ki.kubectlPath = kubectlPath
+	// {pod123 => {folder1 => true, folder2 => true}, ...}
+	ki.folderCreatedOnPod = make(map[string]bool)
 	return ki
 }
 
@@ -77,7 +82,9 @@ func (ki *KubeInfo) UpdatePodList() error {
 	defer ki.l.Unlock()
 
 	var podList PodList
-	podListJSON, err := execCommand(ki.kubectlPath, "-n", ki.namespace, "get", "pods", "-o", "json")
+
+	podListCommand := newCommand(ki.kubectlPath, "-n", ki.namespace, "get", "pods", "-o", "json")
+	podListJSON, err := podListCommand.exec()
 	if err != nil {
 		return err
 	}
@@ -86,6 +93,7 @@ func (ki *KubeInfo) UpdatePodList() error {
 		return err
 	}
 
+	// Map apps to pods
 	newAppToPods := make(map[string][]string)
 	for _, podItem := range podList.PodItems {
 		app := podItem.Metadata.Labels.App
@@ -96,6 +104,9 @@ func (ki *KubeInfo) UpdatePodList() error {
 		newAppToPods[app] = append(newAppToPods[app], name)
 	}
 	ki.appToPods = newAppToPods
+
+	// Reset the list of created folders
+	ki.folderCreatedOnPod = make(map[string]bool)
 
 	if len(ki.appToPods) == 0 {
 		log.Fatal("no pods found in namespace" + ki.namespace + "\n")
@@ -112,19 +123,46 @@ func (ki *KubeInfo) CreateFolder(app string, path string) {
 	pods := ki.appToPods[app]
 	for _, podName := range pods {
 		globalFeed.newLog("Creating folder" + path + " in pod " + podName)
-		backgroundExecCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "mkdir", path)
+
+		createFolderCommand := newCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "mkdir", path)
+		backgroundExecCommands(createFolderCommand)
 	}
 }
 
-// CopyFile ...
-func (ki *KubeInfo) CopyFile(app string, localPath string, podPath string) {
+// WriteFile ...
+func (ki *KubeInfo) WriteFile(app string, localPath string, podPath string) {
 	ki.l.Lock()
 	defer ki.l.Unlock()
 
 	pods := ki.appToPods[app]
 	for _, podName := range pods {
-		globalFeed.newLog("Copying file " + localPath + " to " + podPath + " in pod " + podName)
-		backgroundExecCommand(ki.kubectlPath, "-n", ki.namespace, "cp", localPath, podName+":"+podPath)
+
+		// 1: Create the remote folder
+		// The folder could not exists (folder creation and file creation ar
+		// async processes. To avoid error, we force the folder creation inside the
+		// container.
+		remotePath, _ := filepath.Split(podPath)
+		createFolderCommand := newCommand(ki.kubectlPath,
+			"-n", ki.namespace, "exec", podName, "--", "mkdir", remotePath)
+		// This command could fail if the folder already exists on the server or
+		// if it is not possible create the folder. Just ignore. In case of errors
+		// they will be reported in the next block
+		createFolderCommand.ignoreErrors(true).beSilent(true)
+
+		// 2: Write file
+		writeFileCommand := newCommand(ki.kubectlPath, "-n", ki.namespace, "cp", localPath, podName+":"+podPath)
+
+		// Try to create the folder only if we did not try previously on the same
+		// pod.
+		if ki.folderCreatedOnPod[podName+remotePath] == false {
+			ki.folderCreatedOnPod[podName+remotePath] = true
+			globalFeed.newLog("Creating folder " + remotePath + " in pod " + podName)
+			globalFeed.newLog("Writing file " + podPath + " in pod " + podName)
+			backgroundExecCommands(createFolderCommand, writeFileCommand)
+		} else {
+			globalFeed.newLog("Writing file " + podPath + " in pod " + podName)
+			backgroundExecCommands(writeFileCommand)
+		}
 	}
 }
 
@@ -136,7 +174,9 @@ func (ki *KubeInfo) RemoveFolder(app string, path string) {
 	pods := ki.appToPods[app]
 	for _, podName := range pods {
 		globalFeed.newLog("Removing folder" + path + " in pod " + podName)
-		backgroundExecCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "rmdir", path)
+
+		removeFolderCommand := newCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "rmdir", path)
+		backgroundExecCommands(removeFolderCommand)
 	}
 }
 
@@ -148,18 +188,8 @@ func (ki *KubeInfo) RemoveFile(app string, path string) {
 	pods := ki.appToPods[app]
 	for _, podName := range pods {
 		globalFeed.newLog("Removing file " + path + " in pod " + podName)
-		backgroundExecCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "rm", path)
-	}
-}
 
-func backgroundExecCommand(cmd string, args ...string) {
-	go execCommand(cmd, args...)
-}
-
-func execCommand(cmd string, args ...string) (string, error) {
-	out, err := exec.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		globalFeed.newError(err)
+		removeFileCommand := newCommand(ki.kubectlPath, "-n", ki.namespace, "exec", podName, "--", "rm", path)
+		backgroundExecCommands(removeFileCommand)
 	}
-	return string(out), err
 }

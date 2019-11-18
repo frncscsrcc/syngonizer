@@ -35,7 +35,7 @@ func (wf *WatchFolder) writeFolder(path string) {
 
 func (wf *WatchFolder) writeFile(localPath string, podPath string) {
 	for _, app := range wf.apps {
-		wf.kubeInfo.CopyFile(app, localPath, podPath)
+		wf.kubeInfo.WriteFile(app, localPath, podPath)
 	}
 	return
 }
