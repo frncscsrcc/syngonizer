@@ -10,7 +10,8 @@ func (wf *WatchFolder) remove(path string) {
 		remotePath = wf.remoteRoot + remotePath
 	}
 
-	if isAFolder(path) {
+	// Is a folder (can not check in the FS, because the folder is already deleted)
+	if wf.existingFolders[path] {
 		wf.removeFolder(remotePath)
 		delete(wf.existingFolders, path)
 		return

@@ -1,4 +1,4 @@
 package syngonizer
 
-// How often refresh the pod list
-var _refreshRate = 60
+// How often listen for events
+var _refreshRate = 0.5

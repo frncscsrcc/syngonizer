@@ -3,7 +3,6 @@ package syngonizer
 import (
 	"errors"
 	"log"
-	"os"
 	"time"
 
 	"github.com/radovskyb/watcher"
@@ -16,7 +15,7 @@ type WatchFolder struct {
 	remoteRoot      string
 	apps            []string
 	existingFolders map[string]bool
-	refreshRate     int
+	refreshRate     float64
 	kubeInfo        *KubeInfo
 }
 
@@ -133,33 +132,16 @@ func (wf *WatchFolder) listen() {
 			}
 		}
 	}()
-
 	// Set refresh rate
 	refreshRate := _refreshRate
 	if wf.refreshRate > 0 {
 		refreshRate = wf.refreshRate
 	}
+	// Sec to ms
+	refreshRate = 1000 * refreshRate
 
 	// Start listening events
 	if err := wf.watcher.Start(time.Millisecond * time.Duration(refreshRate)); err != nil {
 		globalFeed.newError(err)
-	}
-}
-
-func isAFolder(path string) bool {
-	file, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	fi, err1 := file.Stat()
-	switch {
-	case err1 != nil:
-		return false
-	case fi.IsDir():
-		return true
-	default:
-		return false
 	}
 }

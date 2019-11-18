@@ -15,12 +15,12 @@ type Config struct {
 
 // GlobalConfig ...
 type GlobalConfig struct {
-	RefreshRate     int    `json:"refresh-rate"`
-	NameSpace       string `json:"namespace"`
-	KubectlPath     string `json:"kubectl-path"`
-	RefreshPodList  int    `json:"refresh-pod-list"`
-	AllowProduction bool   `json:"allow-production"`
-	DieIfError      bool   `json:"die-if-error"`
+	RefreshRate     float64 `json:"refresh-rate"`
+	NameSpace       string  `json:"namespace"`
+	KubectlPath     string  `json:"kubectl-path"`
+	RefreshPodList  int     `json:"refresh-pod-list"`
+	AllowProduction bool    `json:"allow-production"`
+	DieIfError      bool    `json:"die-if-error"`
 }
 
 // FolderConfig ...
