@@ -143,7 +143,7 @@ func (ki *KubeInfo) WriteFile(app string, localPath string, podPath string) {
 		// container.
 		remotePath, _ := filepath.Split(podPath)
 		createFolderCommand := newCommand(ki.kubectlPath,
-			"-n", ki.namespace, "exec", podName, "--", "mkdir", remotePath)
+			"-n", ki.namespace, "exec", podName, "--", "mkdir", remotePath, "-p")
 		// This command could fail if the folder already exists on the server or
 		// if it is not possible create the folder. Just ignore. In case of errors
 		// they will be reported in the next block
