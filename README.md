@@ -10,6 +10,20 @@ a Kubernetes infrastructure.
 running kubernetes cluster. In future it will be replaced with a better implementation,
 based on the official kubernetes client API. But this is enough for a raining Sunday.
 
+Motivation
+---
+
+- I work on a codebase written in a scripting language that interacts with a lot of different services in a kubernetes environment.
+- It is not possible (or better, not very convenient) run the application locally.
+- I want to save a file (or delete, or remove, or ...) and be sure it will be sync in all the containers where this file is expected to be. In this way I can see "real-time" changes in the running application (the beauty of scripting languages!).
+- I do not want to build a new container image and deploy it for each little change in my code.
+- I do not want to work from inside a running container, e.g. via `kubectl -exec` (I could have a deployment with several running replicates and I need my changes locally).
+
+
+- **Moreover, I need a fun case to improve my Golang skills :-)**
+
+
+
 Usage
 ---
 ```
