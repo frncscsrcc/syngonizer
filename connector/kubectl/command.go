@@ -43,7 +43,7 @@ func execCommands(errorChan chan error, commands ...*command) (string, error) {
 			errorChan <- err
 			return "", err
 		}
-		// Ignore output, if it is requred
+		// Ignore output, if it is required
 		if c.isSilent {
 			continue
 		}
