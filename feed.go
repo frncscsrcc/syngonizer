@@ -14,15 +14,3 @@ func init() {
 	globalFeed.fatalChan = make(chan error)
 	globalFeed.logChan = make(chan string)
 }
-
-func (f *feed) newError(err error) {
-	f.errorChan <- err
-}
-
-func (f *feed) newFatal(err error) {
-	f.fatalChan <- err
-}
-
-func (f *feed) newLog(message string) {
-	f.logChan <- message
-}

@@ -1,4 +1,4 @@
-package syngonizer
+package kubectl
 
 import "os/exec"
 
@@ -34,13 +34,13 @@ func (c *command) exec() (string, error) {
 	return string(out), err
 }
 
-func execCommands(commands ...*command) (string, error) {
+func execCommands(errorChan chan error, commands ...*command) (string, error) {
 	output := ""
 	for _, c := range commands {
 		out, err := c.exec()
 		// Igore the error, if it is required
 		if c.ignoreErr != true && err != nil {
-			globalFeed.newError(err)
+			errorChan <- err
 			return "", err
 		}
 		// Ignore output, if it is requred
@@ -48,13 +48,13 @@ func execCommands(commands ...*command) (string, error) {
 			continue
 		}
 		if out != "" {
-			globalFeed.newLog(out)
+			errorChan <- err
 		}
 		output += out
 	}
 	return output, nil
 }
 
-func backgroundExecCommands(commands ...*command) {
-	go execCommands(commands...)
+func backgroundExecCommands(errorChan chan error, commands ...*command) {
+	go execCommands(errorChan, commands...)
 }

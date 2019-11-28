@@ -28,14 +28,14 @@ func (wf *WatchFolder) write(path string) {
 
 func (wf *WatchFolder) writeFolder(path string) {
 	for _, app := range wf.apps {
-		wf.kubeInfo.CreateFolder(app, path)
+		wf.connector.CreateFolder(app, path)
 	}
 	return
 }
 
 func (wf *WatchFolder) writeFile(localPath string, podPath string) {
 	for _, app := range wf.apps {
-		wf.kubeInfo.WriteFile(app, localPath, podPath)
+		wf.connector.WriteFile(app, localPath, podPath)
 	}
 	return
 }

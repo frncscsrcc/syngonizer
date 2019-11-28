@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/frncscsrcc/syngonizer/config"
+	"github.com/frncscsrcc/syngonizer/connector"
 	"github.com/radovskyb/watcher"
 )
 
@@ -16,30 +18,34 @@ type WatchFolder struct {
 	apps                []string
 	existingFolders     map[string]bool
 	eventListenInterval float64
-	kubeInfo            *KubeInfo
+	connector           connector.Connector
+}
+
+// LoadConfig ...
+func LoadConfig(path string) (config.Config, error) {
+	return config.LoadConfig(path)
 }
 
 // Watch ...
-func Watch(config Config) error {
-	ki := NewKubeInfo(config.Global.NameSpace, config.Global.KubectlPath)
-	// Load app to pods (async the first time, so it can return if can not connect)
-	err := ki.UpdatePodList()
+func Watch(config config.Config) error {
+	c, err := connector.NewConnector(config, globalFeed.logChan, globalFeed.errorChan)
 	if err != nil {
-		log.Printf("%s\n", err)
+		return errors.New("can not create a connector")
+	}
+
+	// Load app to pods (async the first time, so it can return if can not connect)
+	errUpdate := c.UpdatePodList()
+	if errUpdate != nil {
+		log.Printf("%s\n", errUpdate)
 		return errors.New("can not fetch pod list for namespace " + config.Global.NameSpace)
 	}
 	log.Printf("Fetched app to pod list for namespace %s\n", config.Global.NameSpace)
 
-	// Request a refresh on pod list based on time interval
-	updatePodListInterval := _updatePodListInterval
-	if config.Global.UpdatePodListInterval > 0 {
-		updatePodListInterval = config.Global.UpdatePodListInterval
-	}
-	ki.UpdatePodListBackground(updatePodListInterval)
+	c.UpdatePodListBackground()
 
 	watchers := make([]*WatchFolder, 0)
 	for _, folderConfig := range config.Folders {
-		w, err := addWatchFolder(config.Global, folderConfig, ki)
+		w, err := addWatchFolder(config.Global.EventListenInterval, folderConfig, c)
 		if err != nil {
 			return err
 		}
@@ -73,7 +79,7 @@ loop:
 	return nil
 }
 
-func addWatchFolder(globalConfig GlobalConfig, folderConfig FolderConfig, ki *KubeInfo) (*WatchFolder, error) {
+func addWatchFolder(eventListenInterval float64, folderConfig config.FolderConfig, c connector.Connector) (*WatchFolder, error) {
 	wf := new(WatchFolder)
 	root := folderConfig.LocalRoot
 	if isAFolder(root) == false {
@@ -82,9 +88,9 @@ func addWatchFolder(globalConfig GlobalConfig, folderConfig FolderConfig, ki *Ku
 
 	wf.localRoot = root
 	wf.remoteRoot = folderConfig.RemoteRoot
-	wf.eventListenInterval = globalConfig.EventListenInterval
+	wf.eventListenInterval = eventListenInterval
 	wf.apps = folderConfig.Apps
-	wf.kubeInfo = ki
+	wf.connector = c
 
 	wf.existingFolders = make(map[string]bool)
 
@@ -125,9 +131,9 @@ func (wf *WatchFolder) listen() {
 					// wf.move(event.Path)
 				}
 			case err := <-wf.watcher.Error:
-				globalFeed.newError(err)
+				globalFeed.errorChan <- err
 			case <-wf.watcher.Closed:
-				globalFeed.newLog("closing chanel")
+				globalFeed.logChan <- "closing chanel"
 				return
 			}
 		}
@@ -142,6 +148,6 @@ func (wf *WatchFolder) listen() {
 
 	// Start listening events
 	if err := wf.watcher.Start(time.Millisecond * time.Duration(eventListenInterval)); err != nil {
-		globalFeed.newError(err)
+		globalFeed.errorChan <- err
 	}
 }

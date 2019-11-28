@@ -1,9 +1,10 @@
-package syngonizer
+package config
 
 import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -75,4 +76,22 @@ func LoadConfig(configPath string) (Config, error) {
 	}
 
 	return config, nil
+}
+
+func isAFolder(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	fi, err1 := file.Stat()
+	switch {
+	case err1 != nil:
+		return false
+	case fi.IsDir():
+		return true
+	default:
+		return false
+	}
 }

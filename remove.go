@@ -23,14 +23,14 @@ func (wf *WatchFolder) remove(path string) {
 
 func (wf *WatchFolder) removeFolder(path string) {
 	for _, app := range wf.apps {
-		wf.kubeInfo.RemoveFolder(app, path)
+		wf.connector.RemoveFolder(app, path)
 	}
 	return
 }
 
 func (wf *WatchFolder) removeFile(podPath string) {
 	for _, app := range wf.apps {
-		wf.kubeInfo.RemoveFile(app, podPath)
+		wf.connector.RemoveFile(app, podPath)
 	}
 	return
 }
