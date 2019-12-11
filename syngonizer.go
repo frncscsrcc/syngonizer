@@ -13,6 +13,7 @@ import (
 // WatchFolder ...
 type WatchFolder struct {
 	watcher             *watcher.Watcher
+	eventQueue          chan watcher.Event
 	localRoot           string
 	remoteRoot          string
 	apps                []string
@@ -24,6 +25,30 @@ type WatchFolder struct {
 // LoadConfig ...
 func LoadConfig(path string) (config.Config, error) {
 	return config.LoadConfig(path)
+}
+
+func initEventQueue(numWorkers int) {
+	startWorker := func() {
+		for {
+			select {
+			case event := <-eventQueue:
+				switch event.Op {
+				case watcher.Write:
+					wf.write(event.Path)
+				case watcher.Create:
+					wf.write(event.Path)
+				case watcher.Remove:
+					wf.remove(event.Path)
+				case watcher.Rename:
+					// wf.move(event.Path)
+				}
+			}
+		}
+	}
+
+	for i := 0; i < numWorkers; i++ {
+		go startWorker()
+	}
 }
 
 // Watch ...
@@ -45,7 +70,7 @@ func Watch(config config.Config) error {
 
 	watchers := make([]*WatchFolder, 0)
 	for _, folderConfig := range config.Folders {
-		w, err := addWatchFolder(config.Global.EventListenInterval, folderConfig, c)
+		w, err := addWatchFolder(config.Global.EventListenInterval, config.Global.WorkersLimit, folderConfig, c)
 		if err != nil {
 			return err
 		}
@@ -79,7 +104,7 @@ loop:
 	return nil
 }
 
-func addWatchFolder(eventListenInterval float64, folderConfig config.FolderConfig, c connector.Connector) (*WatchFolder, error) {
+func addWatchFolder(eventListenInterval float64, folderConfig config.FolderConfig, workerLimit int, c connector.Connector) (*WatchFolder.Connector) (*WorkersLimit, , error) {
 	wf := new(WatchFolder)
 	root := folderConfig.LocalRoot
 	if isAFolder(root) == false {
@@ -91,7 +116,7 @@ func addWatchFolder(eventListenInterval float64, folderConfig config.FolderConfi
 	wf.eventListenInterval = eventListenInterval
 	wf.apps = folderConfig.Apps
 	wf.connector = c
-
+	wf.eventQueue = make(chan watcher.Event)
 	wf.existingFolders = make(map[string]bool)
 
 	wf.watcher = watcher.New()
@@ -104,6 +129,11 @@ func addWatchFolder(eventListenInterval float64, folderConfig config.FolderConfi
 		if isAFolder(path) {
 			wf.existingFolders[path] = true
 		}
+	}
+
+	// Initialize the workers (event consumers)
+	for i := 0; i < workerLimit; i++ {
+		go startWorker(wf)
 	}
 
 	return wf, nil
@@ -119,17 +149,9 @@ func (wf *WatchFolder) listen() {
 	go func() {
 		for {
 			select {
+			// Forward event to consumer queue
 			case event := <-wf.watcher.Event:
-				switch event.Op {
-				case watcher.Write:
-					wf.write(event.Path)
-				case watcher.Create:
-					wf.write(event.Path)
-				case watcher.Remove:
-					wf.remove(event.Path)
-				case watcher.Rename:
-					// wf.move(event.Path)
-				}
+				wf.eventQueue <-event
 			case err := <-wf.watcher.Error:
 				globalFeed.errorChan <- err
 			case <-wf.watcher.Closed:
@@ -149,5 +171,23 @@ func (wf *WatchFolder) listen() {
 	// Start listening events
 	if err := wf.watcher.Start(time.Millisecond * time.Duration(eventListenInterval)); err != nil {
 		globalFeed.errorChan <- err
+	}
+}
+
+func startWorker(wf *WatchFolder) {
+	for {
+		select {
+		case event := <-wf.eventQueue:
+			switch event.Op {
+			case watcher.Write:
+				wf.write(event.Path)
+			case watcher.Create:
+				wf.write(event.Path)
+			case watcher.Remove:
+				wf.remove(event.Path)
+			case watcher.Rename:
+				// wf.move(event.Path)
+			}
+		}
 	}
 }

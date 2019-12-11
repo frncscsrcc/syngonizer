@@ -17,6 +17,7 @@ type Config struct {
 // GlobalConfig ...
 type GlobalConfig struct {
 	EventListenInterval   float64 `json:"event-listen-iterval"`
+	WorkersLimit          int     `json:"workers-limit"`
 	NameSpace             string  `json:"namespace"`
 	KubectlPath           string  `json:"kubectl-path"`
 	UpdatePodListInterval int     `json:"update-pod-list-interval"`
@@ -51,6 +52,9 @@ func LoadConfig(configPath string) (Config, error) {
 	}
 	if config.Global.UpdatePodListInterval > 0 && config.Global.UpdatePodListInterval < 5 {
 		return config, errors.New("update-pod-list-interval min value is 5")
+	}
+	if config.Global.WorkersLimit == 0 {
+		return config, errors.New("missing workers-limit in config")
 	}
 	for _, folderConfig := range config.Folders {
 		// local-root is required
