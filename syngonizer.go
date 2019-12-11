@@ -27,30 +27,6 @@ func LoadConfig(path string) (config.Config, error) {
 	return config.LoadConfig(path)
 }
 
-func initEventQueue(numWorkers int) {
-	startWorker := func() {
-		for {
-			select {
-			case event := <-eventQueue:
-				switch event.Op {
-				case watcher.Write:
-					wf.write(event.Path)
-				case watcher.Create:
-					wf.write(event.Path)
-				case watcher.Remove:
-					wf.remove(event.Path)
-				case watcher.Rename:
-					// wf.move(event.Path)
-				}
-			}
-		}
-	}
-
-	for i := 0; i < numWorkers; i++ {
-		go startWorker()
-	}
-}
-
 // Watch ...
 func Watch(config config.Config) error {
 	c, err := connector.NewConnector(config, globalFeed.logChan, globalFeed.errorChan)
@@ -104,7 +80,7 @@ loop:
 	return nil
 }
 
-func addWatchFolder(eventListenInterval float64, folderConfig config.FolderConfig, workerLimit int, c connector.Connector) (*WatchFolder.Connector) (*WorkersLimit, , error) {
+func addWatchFolder(eventListenInterval float64, workerLimit int, folderConfig config.FolderConfig, c connector.Connector) (*WatchFolder, error) {
 	wf := new(WatchFolder)
 	root := folderConfig.LocalRoot
 	if isAFolder(root) == false {
@@ -151,7 +127,7 @@ func (wf *WatchFolder) listen() {
 			select {
 			// Forward event to consumer queue
 			case event := <-wf.watcher.Event:
-				wf.eventQueue <-event
+				wf.eventQueue <- event
 			case err := <-wf.watcher.Error:
 				globalFeed.errorChan <- err
 			case <-wf.watcher.Closed:
