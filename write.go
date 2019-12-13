@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (wf *WatchFolder) write(path string) {
+func (wf *WatchFolder) write(path string) ([]string, []error) {
 	remotePath := strings.Replace(path, wf.localRoot, "", 1)
 	if wf.remoteRoot != "" {
 		remotePath = wf.remoteRoot + remotePath
@@ -15,29 +15,47 @@ func (wf *WatchFolder) write(path string) {
 		// Nothing to do if the folder already exists (eg: a file is written inside
 		// a watched folder)
 		if wf.existingFolders[path] {
-			return
+			return []string{}, nil
 		}
-		wf.writeFolder(remotePath)
-		wf.existingFolders[path] = true
-		return
+		logs, errs := wf.writeFolder(remotePath)
+		if len(errs) == 0 {
+			wf.existingFolders[path] = true
+		}
+		return logs, errs
 	}
 
-	wf.writeFile(path, remotePath)
-	return
+	logs, errs := wf.writeFile(path, remotePath)
+	return logs, errs
 }
 
-func (wf *WatchFolder) writeFolder(path string) {
+func (wf *WatchFolder) writeFolder(path string) ([]string, []error) {
+	logSlice := make([]string, 0)
+	errorSlice := make([]error, 0)
 	for _, app := range wf.apps {
-		wf.connector.CreateFolder(app, path)
+		logs, errs := wf.connector.CreateFolder(app, path)
+		for _, m := range(logs){
+			logSlice = append(logSlice, m)
+		}
+		for _, m := range(errs){
+			errorSlice = append(errorSlice, m)
+		}		
 	}
-	return
+	return logSlice, errorSlice
 }
 
-func (wf *WatchFolder) writeFile(localPath string, podPath string) {
+func (wf *WatchFolder) writeFile(localPath string, podPath string) ([]string, []error) {
+	logSlice := make([]string, 0)
+	errorSlice := make([]error, 0)
 	for _, app := range wf.apps {
-		wf.connector.WriteFile(app, localPath, podPath)
+		logs, errs := wf.connector.WriteFile(app, localPath, podPath)
+		for _, m := range(logs){
+			logSlice = append(logSlice, m)
+		}
+		for _, m := range(errs){
+			errorSlice = append(errorSlice, m)
+		}		
 	}
-	return
+	return logSlice, errorSlice
 }
 
 func isAFolder(path string) bool {

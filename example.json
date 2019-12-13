@@ -1,0 +1,23 @@
+{
+  "global": {
+    "event-listen-iterval": 0.50,
+    "update-pod-list-interval": 20,
+    "namespace": "default",
+    "kubectl-path": "/usr/local/bin/kubectl",
+    "allow-production": false,
+    "die-if-error": false,
+    "workers-limit": 1
+  },
+  "folders": [
+    {
+      "local-root" : "/home/francesco/test/folder1",
+      "remote-root" : "/tmp/test1",
+      "apps" : ["kubernetes-bootcamp"]
+    },
+    {
+      "local-root" : "/home/francesco/test/folder2",
+      "remote-root" : "/tmp/test2",
+      "apps" : ["appA1", "appA2", "appB1"]
+    }
+  ]
+}

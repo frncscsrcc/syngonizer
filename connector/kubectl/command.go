@@ -1,6 +1,8 @@
 package kubectl
 
-import "os/exec"
+import (
+	"os/exec"
+)
 
 type command struct {
 	cmd       string
@@ -34,27 +36,19 @@ func (c *command) exec() (string, error) {
 	return string(out), err
 }
 
-func execCommands(errorChan chan error, commands ...*command) (string, error) {
+func execCommands(commands ...*command) (string, error) {
 	output := ""
 	for _, c := range commands {
 		out, err := c.exec()
 		// Igore the error, if it is required
 		if c.ignoreErr != true && err != nil {
-			errorChan <- err
 			return "", err
 		}
 		// Ignore output, if it is required
 		if c.isSilent {
 			continue
 		}
-		if out != "" {
-			errorChan <- err
-		}
 		output += out
 	}
 	return output, nil
-}
-
-func backgroundExecCommands(errorChan chan error, commands ...*command) {
-	go execCommands(errorChan, commands...)
 }

@@ -10,14 +10,14 @@ type Connector interface {
 	UpdatePodListBackground()
 	UpdatePodList() error
 
-	CreateFolder(string, string)
-	WriteFile(string, string, string)
-	RemoveFolder(string, string)
-	RemoveFile(string, string)
+	CreateFolder(string, string) ([]string, []error)
+	WriteFile(string, string, string) ([]string, []error)
+	RemoveFolder(string, string) ([]string, []error)
+	RemoveFile(string, string) ([]string, []error)
 }
 
 // NewConnector ...
 // At the moment we handle only Kubectl Connector
-func NewConnector(config config.Config, logChan chan string, errChan chan error) (Connector, error) {
-	return kubectl.NewConnector(config, logChan, errChan)
+func NewConnector(config config.Config) (Connector, error) {
+	return kubectl.NewConnector(config)
 }

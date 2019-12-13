@@ -2,6 +2,8 @@ package kubectl
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"path/filepath"
 	"sync"
@@ -27,12 +29,10 @@ type Connector struct {
 	// in order to avoid to create the remote folder all the time we update a file
 	// format: {"POD123/folder/ABC" => true, "POD456/folder/ABC" => true, ...}
 	folderCreatedOnPod map[string]bool
-	logChan            chan string
-	errChan            chan error
 }
 
 // NewConnector ...
-func NewConnector(config config.Config, logChan chan string, errChan chan error) (*Connector, error) {
+func NewConnector(config config.Config) (*Connector, error) {
 	c := new(Connector)
 
 	validationError := validate(config)
@@ -46,8 +46,6 @@ func NewConnector(config config.Config, logChan chan string, errChan chan error)
 	c.kubectlPath = config.Global.KubectlPath
 	// {pod123 => {folder1 => true, folder2 => true}, ...}
 	c.folderCreatedOnPod = make(map[string]bool)
-	c.logChan = logChan
-	c.errChan = errChan
 	return c, nil
 }
 
@@ -63,15 +61,11 @@ func (c *Connector) UpdatePodListBackground() {
 	}
 
 	ticker := time.NewTicker(time.Duration(sleep) * time.Second)
-	quit := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				c.UpdatePodList()
-			case <-quit:
-				ticker.Stop()
-				return
 			}
 		}
 	}()
@@ -124,19 +118,26 @@ func (c *Connector) GetPodList(selector string) []string {
 }
 
 // CreateFolder ...
-func (c *Connector) CreateFolder(app string, path string) {
+func (c *Connector) CreateFolder(app string, path string) ([]string, []error) {
+	logSlice := make([]string, 0)
+	errorSlice := make([]error, 0)
 	for _, podName := range c.GetPodList(app) {
-		c.logChan <- "Creating folder" + path + " in pod " + podName
-
-		createFolderCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "mkdir", path)
-		backgroundExecCommands(c.errChan, createFolderCommand)
+		logSlice = append(logSlice, fmt.Sprintf("%s %s: Creating folder %s\n", app, podName, path))
+		createFolderCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "mkdir", "-p", path)
+		_, err := execCommands(createFolderCommand)
+		if err != nil {
+			errorSlice = append(errorSlice, newError(app, podName, err))
+		}
 	}
+	return logSlice, errorSlice
 }
 
 // WriteFile ...
-func (c *Connector) WriteFile(app string, localPath string, podPath string) {
-	for _, podName := range c.GetPodList(app) {
+func (c *Connector) WriteFile(app string, localPath string, podPath string) ([]string, []error) {
+	logSlice := make([]string, 0)
+	errorSlice := make([]error, 0)
 
+	for _, podName := range c.GetPodList(app) {
 		// 1: Create the remote folder
 		// The folder could not exists (folder creation and file creation ar
 		// async processes. To avoid error, we force the folder creation inside the
@@ -156,32 +157,54 @@ func (c *Connector) WriteFile(app string, localPath string, podPath string) {
 		// pod.
 		if c.folderCreatedOnPod[podName+remotePath] == false {
 			c.folderCreatedOnPod[podName+remotePath] = true
-			c.logChan <- "Creating folder " + remotePath + " in pod " + podName
-			c.logChan <- "Writing file " + podPath + " in pod " + podName
-			backgroundExecCommands(c.errChan, createFolderCommand, writeFileCommand)
-		} else {
-			c.logChan <- "Writing file " + podPath + " in pod " + podName
-			backgroundExecCommands(c.errChan, writeFileCommand)
+			logSlice = append(logSlice, fmt.Sprintf("%s %s: Creating folder %s\n", app, podName, remotePath))
+			_, err := execCommands(createFolderCommand, writeFileCommand)
+			if err != nil {
+				errorSlice = append(errorSlice, newError(app, podName, err))
+			}
+		}
+
+		logSlice = append(logSlice, fmt.Sprintf("%s %s: Writing file %s\n", app, podName, podPath))
+		_, err := execCommands(writeFileCommand)
+		if err != nil {
+			errorSlice = append(errorSlice, newError(app, podName, err))
 		}
 	}
+	return logSlice, errorSlice
 }
 
 // RemoveFolder ...
-func (c *Connector) RemoveFolder(app string, path string) {
-	for _, podName := range c.GetPodList(app) {
-		c.logChan <- "Removing folder" + path + " in pod " + podName
+func (c *Connector) RemoveFolder(app string, path string) ([]string, []error) {
+	logSlice := make([]string, 0)
+	errorSlice := make([]error, 0)
 
+	for _, podName := range c.GetPodList(app) {
+		logSlice = append(logSlice, fmt.Sprintf("%s %s: Removing folder %s\n", app, podName, path))
 		removeFolderCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "rmdir", path)
-		backgroundExecCommands(c.errChan, removeFolderCommand)
+		_, err := execCommands(removeFolderCommand)
+		if err != nil {
+			errorSlice = append(errorSlice, newError(app, podName, err))
+		}
 	}
+	return logSlice, errorSlice
 }
 
 // RemoveFile ...
-func (c *Connector) RemoveFile(app string, path string) {
-	for _, podName := range c.GetPodList(app) {
-		c.logChan <- "Removing file " + path + " in pod " + podName
+func (c *Connector) RemoveFile(app string, path string) ([]string, []error) {
+	logSlice := make([]string, 0)
+	errorSlice := make([]error, 0)
 
+	for _, podName := range c.GetPodList(app) {
+		logSlice = append(logSlice, fmt.Sprintf("%s %s: Removing file %s\n", app, podName, path))
 		removeFileCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "rm", path)
-		backgroundExecCommands(c.errChan, removeFileCommand)
+		_, err := execCommands(removeFileCommand)
+		if err != nil {
+			errorSlice = append(errorSlice, newError(app, podName, err))
+		}
 	}
+	return logSlice, errorSlice
+}
+
+func newError(app string, podName string, err error) error {
+	return errors.New(fmt.Sprintf("%s %s: ERROR: %s", app, podName, err.Error()))
 }
