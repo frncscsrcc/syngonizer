@@ -1,6 +1,10 @@
 SynGoNizer
 ===
 
+*IMPORTANT!* There is a bug on the current master (fixed in the branch feature/limit-number-gorouine but not yet fully tested).
+The application is not setting any limit on the number of parallel requests the client is going to send to your kube server. If a lot of files change in the watched folders (e.g. after a git switch, or similar), this applications is
+going to process a lot of events; this could use all the resources of your local machine and generate a kind of - not so funny - auto DoS!
+
 [![Go Report Card](https://goreportcard.com/badge/github.com/frncscsrcc/syngonizer)](https://goreportcard.com/report/github.com/frncscsrcc/syngonizer)
 
 Watch and sync files from your local env to one or more running containers on
