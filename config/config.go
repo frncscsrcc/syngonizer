@@ -16,13 +16,14 @@ type Config struct {
 
 // GlobalConfig ...
 type GlobalConfig struct {
-	EventListenInterval   float64 `json:"event-listen-iterval"`
-	WorkersLimit          int     `json:"workers-limit"`
-	NameSpace             string  `json:"namespace"`
-	KubectlPath           string  `json:"kubectl-path"`
-	UpdatePodListInterval int     `json:"update-pod-list-interval"`
-	AllowProduction       bool    `json:"allow-production"`
-	DieIfError            bool    `json:"die-if-error"`
+	EventListenInterval        float64 `json:"event-listen-iterval"`
+	WorkersLimit               int     `json:"workers-limit"`
+	ParallelServerRequestLimit int     `json:"parallel-server-request-limit"`
+	NameSpace                  string  `json:"namespace"`
+	KubectlPath                string  `json:"kubectl-path"`
+	UpdatePodListInterval      int     `json:"update-pod-list-interval"`
+	AllowProduction            bool    `json:"allow-production"`
+	DieIfError                 bool    `json:"die-if-error"`
 }
 
 // FolderConfig ...
@@ -55,6 +56,9 @@ func LoadConfig(configPath string) (Config, error) {
 	}
 	if config.Global.WorkersLimit == 0 {
 		return config, errors.New("missing workers-limit in config")
+	}
+	if config.Global.ParallelServerRequestLimit > 50 {
+		return config, errors.New("too high parallel-server-request-limit (max 50)")
 	}
 	for _, folderConfig := range config.Folders {
 		// local-root is required

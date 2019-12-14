@@ -2,7 +2,32 @@ package kubectl
 
 import (
 	"os/exec"
+
+	"github.com/frncscsrcc/syngonizer/log"
 )
+
+type semaphore chan bool
+
+var sem semaphore
+
+func initializeCommandLimiter(limit int) {
+	sem = make(semaphore, limit)
+}
+
+// acquire n resources
+func (s semaphore) Increment(n int) {
+	e := true
+	for i := 0; i < n; i++ {
+		s <- e
+	}
+}
+
+// release n resources
+func (s semaphore) Decrement(n int) {
+	for i := 0; i < n; i++ {
+		<-s
+	}
+}
 
 type command struct {
 	cmd       string
@@ -36,19 +61,29 @@ func (c *command) exec() (string, error) {
 	return string(out), err
 }
 
-func execCommands(commands ...*command) (string, error) {
-	output := ""
+func execCommands(log log.Log, commands ...*command) {
+	// Use semaphore to be sure we are not running to much go routine
+	// potentialy causing an auto DoS
+	sem.Increment(1)
+	defer sem.Decrement(1)
+
 	for _, c := range commands {
 		out, err := c.exec()
 		// Igore the error, if it is required
-		if c.ignoreErr != true && err != nil {
-			return "", err
+		if c.ignoreErr == false && err != nil {
+			log.SendError(err)
+			return
 		}
 		// Ignore output, if it is required
 		if c.isSilent {
 			continue
 		}
-		output += out
+		if out != "" {
+			log.SendDebug(out)
+		}
 	}
-	return output, nil
+}
+
+func execCommandsBackground(log log.Log, commands ...*command) {
+	go execCommands(log, commands...)
 }

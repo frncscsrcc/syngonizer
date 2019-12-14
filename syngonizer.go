@@ -2,14 +2,23 @@ package syngonizer
 
 import (
 	"errors"
+	"fmt"
 	"sync"
-	"log"
 	"time"
 
 	"github.com/frncscsrcc/syngonizer/config"
 	"github.com/frncscsrcc/syngonizer/connector"
+	"github.com/frncscsrcc/syngonizer/log"
 	"github.com/radovskyb/watcher"
 )
+
+var globalLog log.Log
+
+func init() {
+	// Initialize a log object and start to listen for logs
+	globalLog = log.NewLog(log.DEBUG)
+	go globalLog.PrintLog()
+}
 
 // WatchFolder ...
 type WatchFolder struct {
@@ -30,18 +39,18 @@ func LoadConfig(path string) (config.Config, error) {
 
 // Watch ...
 func Watch(config config.Config) error {
-	c, err := connector.NewConnector(config)
+	c, err := connector.NewConnector(config, globalLog)
 	if err != nil {
 		return errors.New("can not create a connector")
 	}
 
 	// Load app to pods (async the first time, so it can return if can not connect)
-	errUpdate := c.UpdatePodList()
-	if errUpdate != nil {
-		log.Printf("%s\n", errUpdate)
-		return errors.New("can not fetch pod list for namespace " + config.Global.NameSpace)
+	fatalError := c.UpdatePodList()
+	if fatalError != nil {
+		panic(fatalError)
 	}
-	log.Printf("Fetched app to pod list for namespace %s\n", config.Global.NameSpace)
+
+	globalLog.SendLog("Fetched app to pod list for namespace " + config.Global.NameSpace)
 	c.UpdatePodListBackground()
 
 	watchers := make([]*WatchFolder, 0)
@@ -59,28 +68,10 @@ func Watch(config config.Config) error {
 		// LISTEN for events!!
 		go w.listen(&wg)
 
-		log.Printf("Watching %s\n", w)
+		globalLog.SendLog("Watching " + w.localRoot)
 	}
 	wg.Wait()
 
-	/*
-	   	// Handle errors
-	   loop:
-	   	for {
-	   		select {
-	   		case errMessage := <-globalFeed.errorChan:
-	   			log.Printf("ERROR: %s\n", errMessage)
-	   			if config.Global.DieIfError {
-	   				log.Fatal("Die because die-if-error is set true")
-	   			}
-	   		case logMessage := <-globalFeed.logChan:
-	   			log.Printf("%s\n", logMessage)
-	   		case fatalMessage := <-globalFeed.fatalChan:
-	   			log.Printf("ERROR: %s\n", fatalMessage)
-	   			break loop
-	   		}
-	   	}
-	*/
 	return nil
 }
 
@@ -113,7 +104,8 @@ func addWatchFolder(eventListenInterval float64, workerLimit int, folderConfig c
 
 	// Initialize the workers (event consumers)
 	for i := 0; i < workerLimit; i++ {
-		log.Printf("Start Worker %d/%d for %s\n", i + 1, workerLimit, wf.localRoot)
+		logString := fmt.Sprintf("Start Worker %d/%d for %s", i+1, workerLimit, wf.localRoot)
+		globalLog.SendLog(logString)
 		go wf.startWorker()
 	}
 
@@ -135,7 +127,7 @@ func (wf *WatchFolder) listen(wg *sync.WaitGroup) {
 			case event := <-wf.watcher.Event:
 				wf.eventQueue <- event
 			case err := <-wf.watcher.Error:
-				log.Printf("ERROR: %s", err.Error())
+				globalLog.SendError(err)
 			case <-wf.watcher.Closed:
 				return
 			}
@@ -151,7 +143,7 @@ func (wf *WatchFolder) listen(wg *sync.WaitGroup) {
 
 	// Start listening events
 	if err := wf.watcher.Start(time.Millisecond * time.Duration(eventListenInterval)); err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 }
 
@@ -161,26 +153,14 @@ func (wf *WatchFolder) startWorker() {
 		case event := <-wf.eventQueue:
 			switch event.Op {
 			case watcher.Write:
-				logs, errs := wf.write(event.Path)
-				wf.log(logs, errs)
+				wf.write(event.Path)
 			case watcher.Create:
-				logs, errs := wf.write(event.Path)
-				wf.log(logs, errs)
+				wf.write(event.Path)
 			case watcher.Remove:
-				logs, errs := wf.remove(event.Path)
-				wf.log(logs, errs)
+				wf.remove(event.Path)
 			case watcher.Rename:
 				// wf.move(event.Path)
 			}
 		}
-	}
-}
-
-func (wf *WatchFolder) log(logs []string, errs []error) {
-	for _, m := range(logs){
-		log.Printf("%s", m)	
-	}
-	for _, m := range(errs){
-		log.Printf("%s", m)	
 	}
 }

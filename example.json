@@ -6,7 +6,8 @@
     "kubectl-path": "/usr/local/bin/kubectl",
     "allow-production": false,
     "die-if-error": false,
-    "workers-limit": 1
+    "workers-limit": 1,
+    "parallel-server-request-limit": 10
   },
   "folders": [
     {

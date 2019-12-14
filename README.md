@@ -49,6 +49,11 @@ Config example
     "allow-production": false,
     // Die in case of errors
     "die-if-error": false
+    // How many event can be processed at the time
+    "workers-limit": 5,
+    // How many parallel request could be send to kube server at the time
+    // (default 10, max 50)
+    "parallel-server-request-limit": 10
   },
   "folders": [
     {

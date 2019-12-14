@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/frncscsrcc/syngonizer/config"
+	"github.com/frncscsrcc/syngonizer/log"
 )
 
 // -----------------------------------------------------------------------------
@@ -29,11 +29,21 @@ type Connector struct {
 	// in order to avoid to create the remote folder all the time we update a file
 	// format: {"POD123/folder/ABC" => true, "POD456/folder/ABC" => true, ...}
 	folderCreatedOnPod map[string]bool
+	log                log.Log
 }
 
 // NewConnector ...
-func NewConnector(config config.Config) (*Connector, error) {
+func NewConnector(config config.Config, log log.Log) (*Connector, error) {
 	c := new(Connector)
+
+	// Avoid to send to many parallel command requestes via kubectls
+	// this function is defined in command.go
+	parallelServerRequestLimit := 10
+	if config.Global.ParallelServerRequestLimit > 0 {
+		parallelServerRequestLimit = config.Global.ParallelServerRequestLimit
+	}
+	log.SendLog(fmt.Sprintf("Setting a limit for parallel server requests: %d", parallelServerRequestLimit))
+	initializeCommandLimiter(parallelServerRequestLimit)
 
 	validationError := validate(config)
 	if validationError != nil {
@@ -46,6 +56,7 @@ func NewConnector(config config.Config) (*Connector, error) {
 	c.kubectlPath = config.Global.KubectlPath
 	// {pod123 => {folder1 => true, folder2 => true}, ...}
 	c.folderCreatedOnPod = make(map[string]bool)
+	c.log = log
 	return c, nil
 }
 
@@ -104,7 +115,8 @@ func (c *Connector) UpdatePodList() error {
 	c.folderCreatedOnPod = make(map[string]bool)
 
 	if len(c.appToPods) == 0 {
-		log.Fatal("no pods found in namespace" + c.namespace + "\n")
+		err := errors.New("no pods found in namespace " + c.namespace)
+		c.log.SendFatal(err)
 	}
 
 	return err
@@ -118,25 +130,16 @@ func (c *Connector) GetPodList(selector string) []string {
 }
 
 // CreateFolder ...
-func (c *Connector) CreateFolder(app string, path string) ([]string, []error) {
-	logSlice := make([]string, 0)
-	errorSlice := make([]error, 0)
+func (c *Connector) CreateFolder(app string, path string) {
 	for _, podName := range c.GetPodList(app) {
-		logSlice = append(logSlice, fmt.Sprintf("%s %s: Creating folder %s\n", app, podName, path))
+		c.log.SendLog(fmt.Sprintf("%s %s: Creating folder %s\n", app, podName, path))
 		createFolderCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "mkdir", "-p", path)
-		_, err := execCommands(createFolderCommand)
-		if err != nil {
-			errorSlice = append(errorSlice, newError(app, podName, err))
-		}
+		execCommandsBackground(c.log, createFolderCommand)
 	}
-	return logSlice, errorSlice
 }
 
 // WriteFile ...
-func (c *Connector) WriteFile(app string, localPath string, podPath string) ([]string, []error) {
-	logSlice := make([]string, 0)
-	errorSlice := make([]error, 0)
-
+func (c *Connector) WriteFile(app string, localPath string, podPath string) {
 	for _, podName := range c.GetPodList(app) {
 		// 1: Create the remote folder
 		// The folder could not exists (folder creation and file creation ar
@@ -157,52 +160,31 @@ func (c *Connector) WriteFile(app string, localPath string, podPath string) ([]s
 		// pod.
 		if c.folderCreatedOnPod[podName+remotePath] == false {
 			c.folderCreatedOnPod[podName+remotePath] = true
-			logSlice = append(logSlice, fmt.Sprintf("%s %s: Creating folder %s\n", app, podName, remotePath))
-			_, err := execCommands(createFolderCommand, writeFileCommand)
-			if err != nil {
-				errorSlice = append(errorSlice, newError(app, podName, err))
-			}
-		}
-
-		logSlice = append(logSlice, fmt.Sprintf("%s %s: Writing file %s\n", app, podName, podPath))
-		_, err := execCommands(writeFileCommand)
-		if err != nil {
-			errorSlice = append(errorSlice, newError(app, podName, err))
+			c.log.SendLog(fmt.Sprintf("%s %s: Writing file %s (+ create folder, if required)\n", app, podName, podPath))
+			execCommandsBackground(c.log, createFolderCommand, writeFileCommand)
+		} else {
+			c.log.SendLog(fmt.Sprintf("%s %s: Writing file %s\n", app, podName, podPath))
+			execCommandsBackground(c.log, writeFileCommand)
 		}
 	}
-	return logSlice, errorSlice
 }
 
 // RemoveFolder ...
-func (c *Connector) RemoveFolder(app string, path string) ([]string, []error) {
-	logSlice := make([]string, 0)
-	errorSlice := make([]error, 0)
-
+func (c *Connector) RemoveFolder(app string, path string) {
 	for _, podName := range c.GetPodList(app) {
-		logSlice = append(logSlice, fmt.Sprintf("%s %s: Removing folder %s\n", app, podName, path))
+		c.log.SendLog(fmt.Sprintf("%s %s: Removing folder %s\n", app, podName, path))
 		removeFolderCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "rmdir", path)
-		_, err := execCommands(removeFolderCommand)
-		if err != nil {
-			errorSlice = append(errorSlice, newError(app, podName, err))
-		}
+		execCommandsBackground(c.log, removeFolderCommand)
 	}
-	return logSlice, errorSlice
 }
 
 // RemoveFile ...
-func (c *Connector) RemoveFile(app string, path string) ([]string, []error) {
-	logSlice := make([]string, 0)
-	errorSlice := make([]error, 0)
-
+func (c *Connector) RemoveFile(app string, path string) {
 	for _, podName := range c.GetPodList(app) {
-		logSlice = append(logSlice, fmt.Sprintf("%s %s: Removing file %s\n", app, podName, path))
+		c.log.SendLog(fmt.Sprintf("%s %s: Removing file %s\n", app, podName, path))
 		removeFileCommand := newCommand(c.kubectlPath, "-n", c.namespace, "exec", podName, "--", "rm", path)
-		_, err := execCommands(removeFileCommand)
-		if err != nil {
-			errorSlice = append(errorSlice, newError(app, podName, err))
-		}
+		execCommandsBackground(c.log, removeFileCommand)
 	}
-	return logSlice, errorSlice
 }
 
 func newError(app string, podName string, err error) error {
